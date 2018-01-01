@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/codem8s/2fy/version"
@@ -61,14 +60,14 @@ func main() {
 			Action: func(c *cli.Context) error {
 				fileContent, err := readInput()
 				if err != nil {
-					logrus.Fatal(err)
+					return err
 				}
 
 				logrus.Debug("unmarshalling")
 				var contentStructure map[string]interface{}
 				err = yaml.Unmarshal(fileContent, &contentStructure)
 				if err != nil {
-					logrus.Fatalf("unmarshal: %v", err)
+					return err
 				}
 
 				outputContent := []byte(fmt.Sprintf("%v\n", contentStructure))
@@ -78,19 +77,26 @@ func main() {
 	}
 
 	app.CommandNotFound = func(c *cli.Context, command string) {
-		fmt.Fprintf(c.App.Writer, "There is no %q command.\n", command)
+		fmt.Fprintf(cli.ErrWriter, "There is no %q command.\n", command)
+		cli.OsExiter(1)
 	}
 	app.OnUsageError = func(c *cli.Context, err error, isSubcommand bool) error {
 		if isSubcommand {
 			return err
 		}
 
-		fmt.Fprintf(c.App.Writer, "WRONG: %#v\n", err)
+		fmt.Fprintf(cli.ErrWriter, "WRONG: %v\n", err)
 		return nil
+	}
+	cli.OsExiter = func(c int) {
+		if c != 0 {
+			logrus.Debugf("exiting with %d", c)
+		}
+		os.Exit(c)
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		logrus.Fatal(err)
+		fmt.Fprintf(cli.ErrWriter, "ERROR: %v\n", err)
 	}
 }
 
@@ -102,7 +108,7 @@ func readInput() ([]byte, error) {
 			logrus.Debug("no input path, using piped stdin")
 			inputFile = os.Stdin
 		} else {
-			return nil, errors.New("not a pipe stdin")
+			return nil, cli.NewExitError("Expected a pipe stdin", 1)
 		}
 	} else {
 		logrus.Debugf("input path: %v", inputPath)
