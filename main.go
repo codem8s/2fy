@@ -72,22 +72,7 @@ func main() {
 				}
 
 				outputContent := []byte(fmt.Sprintf("%v\n", contentStructure))
-				if outputPath == "" {
-					logrus.Debug("no output path, using stdout")
-					count, err := os.Stdout.Write(outputContent)
-					if err == nil && count < len(outputContent) {
-						logrus.Fatal(io.ErrShortWrite)
-					}
-					if err != nil {
-						logrus.Fatal(err)
-					}
-				} else {
-					err := ioutil.WriteFile(outputPath, outputContent, 0644)
-					if err != nil {
-						logrus.Fatal(err)
-					}
-				}
-				return nil
+				return writeOutput(outputContent)
 			},
 		},
 	}
@@ -135,4 +120,27 @@ func readInput() ([]byte, error) {
 		return nil, err
 	}
 	return fileContent, nil
+}
+
+func writeOutput(outputContent []byte) error {
+	if outputPath == "" {
+		logrus.Debug("no output path, writing to stdout")
+		count, err := os.Stdout.Write(outputContent)
+		if err == nil && count < len(outputContent) {
+			logrus.Debugf("wrote only %v/%v bytes", count, len(outputContent))
+			return io.ErrShortWrite
+		}
+		if err != nil {
+			logrus.Debug("error writing to file")
+			return err
+		}
+	} else {
+		logrus.Debugf("writing to file: %v", outputPath)
+		err := ioutil.WriteFile(outputPath, outputContent, 0644)
+		if err != nil {
+			logrus.Debug("error writing to file")
+			return err
+		}
+	}
+	return nil
 }
