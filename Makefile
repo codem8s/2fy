@@ -26,7 +26,7 @@ GO_LDFLAGS_STATIC=-ldflags "-w $(CTIMEVAR) -extldflags -static"
 # List the GOOS and GOARCH to build
 GOOSARCHES = darwin/amd64 linux/amd64 windows/amd64
 
-all: clean build fmt lint test staticcheck vet install ## Runs a clean, build, fmt, lint, test, vet and install
+all: clean dep build fmt lint test staticcheck vet install ## Runs a clean, build, fmt, lint, test, vet and install
 
 .PHONY: build
 build: $(NAME) ## Builds a dynamic executable or package
@@ -43,7 +43,7 @@ static: ## Builds a static executable
 				${GO_LDFLAGS_STATIC} -o $(NAME) .
 
 .PHONY: fmt
-fmt: ## Verifies all files have men `gofmt`ed
+fmt: ## Verifies all files have been `gofmt`ed
 	@echo "+ $@"
 	@gofmt -s -l . | grep -v '.pb.go:' | grep -v vendor | tee /dev/stderr
 
@@ -122,10 +122,43 @@ tag: ## Create a new git tag to prepare to build a release
 .PHONY: clean
 clean: ## Cleanup any build binaries or packages
 	@echo "+ $@"
+	go clean
 	$(RM) $(NAME)
 	$(RM) -r $(BUILDDIR)
 
 .PHONY: help
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
-	
+
+.PHONY: init
+init: ## Initializes this Makefile dependencies: dep, golint, staticcheck, checkmake
+	@echo "+ $@"
+	go get -u github.com/golang/dep/cmd/dep
+	go get -u github.com/golang/lint/golint
+	go get -u honnef.co/go/tools/cmd/staticcheck
+	go get -u github.com/mrtazz/checkmake
+
+.PHONY: checkmake
+checkmake: ## Check this Makefile
+	@echo "+ $@"
+	@checkmake Makefile
+
+.PHONY: dep
+dep: ## Populates the vendor directory with dependencies
+	@echo "+ $@"
+	@dep ensure -v
+
+.PHONY: verify
+verify: fmt lint vet staticcheck test ## Runs a fmt, lint, test and vet
+
+.PHONY: status
+status: ## Shows git and dep status
+	@echo "Changed files:"
+	@git status --porcelain
+	@echo
+	@echo "Ignored but tracked files:"
+	@git ls-files -i --exclude-standard
+	@echo
+	@echo "Dependencies:"
+	@dep status
+	@echo
