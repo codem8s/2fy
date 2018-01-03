@@ -1,13 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/codem8s/2fy/version"
+	"github.com/ghodss/yaml"
 	"github.com/urfave/cli"
-	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
+	"k8s.io/client-go/util/jsonpath"
 	"os"
 )
 
@@ -44,7 +46,7 @@ func main() {
 		{
 			Name:    "yaml2txt",
 			Aliases: []string{"y2t"},
-			Usage:   "conver YAML fragment to text representation",
+			Usage:   "conver YAML to a text representation",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "input, in",
@@ -72,6 +74,54 @@ func main() {
 
 				outputContent := []byte(fmt.Sprintf("%v\n", contentStructure))
 				return writeOutput(outputContent)
+			},
+		},
+		{
+			Name:    "yaml2json",
+			Aliases: []string{"y2j"},
+			Usage:   "conver YAML to JSON",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "input, in",
+					Usage:       "the input file (or stdin otherwise)",
+					Destination: &inputPath,
+				},
+				cli.StringFlag{
+					Name:        "output, out",
+					Usage:       "the output file (or stdout otherwise)",
+					Destination: &outputPath,
+				},
+			},
+			Action: func(c *cli.Context) error {
+				fileContent, err := readInput()
+				if err != nil {
+					return err
+				}
+
+				logrus.Debug("re-marshalling")
+				jsonContent, err := yaml.YAMLToJSON(fileContent)
+				if err != nil {
+					return err
+				}
+				logrus.Debugf("JSON: %v", string(jsonContent))
+
+				tmpl := "{.two.bar}"
+				j := jsonpath.New("out")
+				if err := j.Parse(tmpl); err != nil {
+					return err
+				}
+				logrus.Debugf("JSON Path template: %v", tmpl)
+
+				b := bytes.NewBuffer(nil)
+				if err := j.Execute(b, string(jsonContent)); err != nil {
+					// fmt.Fprintf(w, "Error executing template: %v. Printing more information for debugging the template:\n", err)
+					// fmt.Fprintf(w, "\ttemplate was:\n\t\t%v\n", tmpl)
+					// fmt.Fprintf(w, "\tobject given to jsonpath engine was:\n\t\t%#v\n\n", queryObj)
+					return fmt.Errorf("error executing jsonpath %q: %v\n", tmpl, err)
+				}
+				jsonContent = b.Bytes()
+
+				return writeOutput(jsonContent)
 			},
 		},
 	}
