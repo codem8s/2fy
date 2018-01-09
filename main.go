@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/codem8s/2fy/version"
@@ -11,11 +10,14 @@ import (
 	"io/ioutil"
 	"k8s.io/client-go/util/jsonpath"
 	"os"
+	"encoding/json"
+	"reflect"
 )
 
 var (
 	inputPath  string
 	outputPath string
+	jsonpathTemplate string
 )
 
 // preload initializes any global options and configuration
@@ -91,6 +93,11 @@ func main() {
 					Usage:       "the output file (or stdout otherwise)",
 					Destination: &outputPath,
 				},
+				cli.StringFlag{
+					Name:        "jsonpath, jp",
+					Usage:"the optional JSONPath template to parse the input with",
+					Destination: &jsonpathTemplate,
+				},
 			},
 			Action: func(c *cli.Context) error {
 				fileContent, err := readInput()
@@ -106,27 +113,48 @@ func main() {
 				if object == nil {
 					return writeOutput([]byte{})
 				}
+        
+				var resultObject interface{}
+				if jsonpathTemplate != "" {
+					jp := jsonpath.New("out")
+					if err := jp.Parse(jsonpathTemplate); err != nil {
+						return err
+					}
+					logrus.Debugf("JSON Path template: '%v'", jsonpathTemplate)
 
-				tmpl := "{.foo}"
-				j := jsonpath.New("out")
-				if err := j.Parse(tmpl); err != nil {
-					return err
+					fullResults, err1 := jp.FindResults(object)
+					if err1 != nil {
+						logrus.Debugf(
+								"Error executing template: %v. Printing more information for debugging the template:\n" +
+									"\ttemplate was:\n\t\t%v\n" +
+									"\tobject given to jsonpath engine was:\n\t\t%#v\n\n", err1, jsonpathTemplate, object)
+						return fmt.Errorf("error executing jsonpath %q: %v", jsonpathTemplate, err1)
+					}
+
+					var rs []interface{}
+				  for ix := range fullResults {
+						rs = collectResults(rs, fullResults[ix])
+					}
+					if len(rs) == 1 { 
+					  resultObject = rs[0]
+					} else {
+						resultObject = rs
+					}
+				} else {
+					logrus.Debug("No results found for the JSON Path")
+					resultObject = object
 				}
-				logrus.Debugf("JSON Path template: %v", tmpl)
 
-				buffer := bytes.NewBuffer(nil)
-				if err := j.Execute(buffer, object); err != nil {
-					logrus.Debugf(
-						"Error executing template: %v. Printing more information for debugging the template:\n" +
-					    "\ttemplate was:\n\t\t%v\n" +
-					    "\tobject given to jsonpath engine was:\n\t\t%#v\n\n", err, tmpl, object)
-					return fmt.Errorf("error executing jsonpath %q: %v", tmpl, err)
+				if resultObject == nil {
+					logrus.Debug("No results found for the JSON Path")
+					return writeOutput([]byte{})
 				}
-
-				var jsonContent []byte
-				jsonContent = buffer.Bytes()
+				jsonContent, err2 := json.Marshal(resultObject)
+				if err2 != nil {
+					return err2
+				}
+				
 				logrus.Debugf("JSON: %v", string(jsonContent))
-
 				return writeOutput(jsonContent)
 			},
 		},
@@ -205,4 +233,11 @@ func writeOutput(outputContent []byte) error {
 		}
 	}
 	return nil
+}
+
+func collectResults(cr []interface{}, results []reflect.Value) []interface{} {
+	for _, r := range results {
+		cr = append(cr, r.Interface())
+	}
+	return cr
 }
