@@ -8,6 +8,12 @@
   version = "v1.0.4"
 
 [[projects]]
+  name = "github.com/ghodss/yaml"
+  packages = ["."]
+  revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/urfave/cli"
   packages = ["."]
   revision = "cfb38830724cc34fedffe9a2a29fb54fa9169cd1"
@@ -34,9 +40,18 @@
   packages = ["."]
   revision = "287cf08546ab5e7e37d55a84f7ed3fd1db036de5"
 
+[[projects]]
+  name = "k8s.io/client-go"
+  packages = [
+    "third_party/forked/golang/template",
+    "util/jsonpath"
+  ]
+  revision = "78700dec6369ba22221b72770783300f143df150"
+  version = "v6.0.0"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9e808242518e0c3ff048f20a53d1ac0549912e20e14b729da800e7b32d4b8deb"
+  inputs-digest = "4e88c6bcc2a7f99079c99199fb6e07c93b8d5ea434bfdc9995f4377f7228da05"
   solver-name = "gps-cdcl"
   solver-version = 1

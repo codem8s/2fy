@@ -98,28 +98,34 @@ func main() {
 					return err
 				}
 
-				logrus.Debug("re-marshalling")
-				jsonContent, err := yaml.YAMLToJSON(fileContent)
-				if err != nil {
+				logrus.Debug("Unmarshal to an object")
+				var object interface{}
+				if err := yaml.Unmarshal(fileContent, &object); err != nil {
 					return err
 				}
-				logrus.Debugf("JSON: %v", string(jsonContent))
+				if object == nil {
+					return writeOutput([]byte{})
+				}
 
-				tmpl := "{.two.bar}"
+				tmpl := "{.foo}"
 				j := jsonpath.New("out")
 				if err := j.Parse(tmpl); err != nil {
 					return err
 				}
 				logrus.Debugf("JSON Path template: %v", tmpl)
 
-				b := bytes.NewBuffer(nil)
-				if err := j.Execute(b, string(jsonContent)); err != nil {
-					// fmt.Fprintf(w, "Error executing template: %v. Printing more information for debugging the template:\n", err)
-					// fmt.Fprintf(w, "\ttemplate was:\n\t\t%v\n", tmpl)
-					// fmt.Fprintf(w, "\tobject given to jsonpath engine was:\n\t\t%#v\n\n", queryObj)
-					return fmt.Errorf("error executing jsonpath %q: %v\n", tmpl, err)
+				buffer := bytes.NewBuffer(nil)
+				if err := j.Execute(buffer, object); err != nil {
+					logrus.Debugf(
+						"Error executing template: %v. Printing more information for debugging the template:\n" +
+					    "\ttemplate was:\n\t\t%v\n" +
+					    "\tobject given to jsonpath engine was:\n\t\t%#v\n\n", err, tmpl, object)
+					return fmt.Errorf("error executing jsonpath %q: %v", tmpl, err)
 				}
-				jsonContent = b.Bytes()
+
+				var jsonContent []byte
+				jsonContent = buffer.Bytes()
+				logrus.Debugf("JSON: %v", string(jsonContent))
 
 				return writeOutput(jsonContent)
 			},

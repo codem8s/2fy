@@ -26,6 +26,7 @@ GO_LDFLAGS_STATIC=-ldflags "-w $(CTIMEVAR) -extldflags -static"
 # List the GOOS and GOARCH to build
 GOOSARCHES = darwin/amd64 linux/amd64 windows/amd64
 
+.PHONY: all
 all: clean dep build fmt lint test staticcheck vet install ## Runs a clean, build, fmt, lint, test, vet and install
 
 .PHONY: build
