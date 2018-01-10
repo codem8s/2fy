@@ -67,33 +67,18 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				inputContent, err := readInput()
-				if err != nil {
-					return err
-				}
-
-				logrus.Debug("Unmarshal to an object")
-				var object interface{}
-				if err := yaml.Unmarshal(inputContent, &object); err != nil {
-					return err
-				}
-				if object == nil {
-					return writeOutput([]byte{})
-				}
-				
-				resultObject, err1 := filter(object, jsonpathTemplate)
-        if err1 != nil {
-					return err1
-				}
-
-				if resultObject == nil {
-					logrus.Debug("No results found for the JSON Path")
-					return writeOutput([]byte{})
-				}
-				
-				outputContent := []byte(fmt.Sprintf("%v", resultObject))
-				logrus.Debugf("JSON: %v", string(outputContent))
-				return writeOutput(outputContent)
+				return transform(
+					func(input []byte) (interface{}, error) {
+						var object interface{}
+						if err := yaml.Unmarshal(input, &object); err != nil {
+							return nil, err
+						}
+						return object, nil
+					},
+					func(object interface{}) ([]byte, error) {
+						output := []byte(fmt.Sprintf("%v", object))
+						return output, nil
+					})
 			},
 		},
 		{
@@ -118,36 +103,21 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				inputContent, err := readInput()
-				if err != nil {
-					return err
-				}
-
-				logrus.Debug("Unmarshal to an object")
-				var object interface{}
-				if err := yaml.Unmarshal(inputContent, &object); err != nil {
-					return err
-				}
-				if object == nil {
-					return writeOutput([]byte{})
-				}
-        
-				resultObject, err1 := filter(object, jsonpathTemplate)
-        if err1 != nil {
-					return err1
-				}
-				
-				if resultObject == nil {
-					logrus.Debug("No results found for the JSON Path")
-					return writeOutput([]byte{})
-				}
-				outputContent, err2 := json.Marshal(resultObject)
-				if err2 != nil {
-					return err2
-				}
-				
-				logrus.Debugf("JSON: %v", string(outputContent))
-				return writeOutput(outputContent)
+				return transform(
+					func(input []byte) (interface{}, error) {
+						var object interface{}
+						if err := yaml.Unmarshal(input, &object); err != nil {
+							return nil, err
+						}
+						return object, nil
+					},
+					func(object interface{}) ([]byte, error) {
+						output, err := json.Marshal(object)
+						if err != nil {
+							return nil, err
+						}
+						return output, nil
+					})
 			},
 		},
 	}
@@ -267,4 +237,41 @@ func filter(object interface{}, jsonpathTemplate string) (interface{}, error) {
 		logrus.Debug("No results found for the JSON Path")
 		return object, nil
 	}
+}
+
+type unmarshaller func([]byte) (interface{}, error)
+type marshaller func(interface{}) ([]byte, error)
+
+func transform(unmarshal unmarshaller, marshal marshaller) error {
+	inputContent, err := readInput()
+	if err != nil {
+		return err
+	}
+
+	logrus.Debug("Unmarshal to an object")
+	object, err1 := unmarshal(inputContent)
+	if err1 != nil {
+		return err1
+	}
+	if object == nil {
+		return writeOutput([]byte{})
+	}
+
+	resultObject, err2 := filter(object, jsonpathTemplate)
+	if err2 != nil {
+		return err2
+	}
+
+	if resultObject == nil {
+		logrus.Debug("No results found for the JSON Path")
+		return writeOutput([]byte{})
+	}
+
+	logrus.Debug("Marshal to an object")
+	outputContent, err3 := marshal(resultObject)
+	if err3 != nil {
+		return err3
+	}
+	logrus.Debugf("Output: %v", string(outputContent))
+	return writeOutput(outputContent)
 }
