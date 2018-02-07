@@ -1,9 +1,10 @@
+# Import config
+# You can change the default config with `make config="config_special.env" build`
+config ?= config.env
+include $(config)
+
 # Set an output prefix, which is the local directory if not specified
 PREFIX?=$(shell pwd)
-
-# Setup name variables for the package/tool
-NAME := 2fy
-PKG := github.com/codem8s/$(NAME)
 
 # Set any default go build tags
 BUILDTAGS :=
@@ -19,6 +20,22 @@ GITUNTRACKEDCHANGES := $(shell git status --porcelain --untracked-files=no)
 ifneq ($(GITUNTRACKEDCHANGES),)
 	GITCOMMIT := $(GITCOMMIT)-dirty
 endif
+
+ifdef TRAVIS
+	ifneq ($(TRAVIS_TAG),)
+		LATEST_TAG := "latest"
+		VERSION_TAG := "$(VERSION)"
+	else
+		LATEST_TAG := "v$(GITCOMMIT)"
+		VERSION_TAG := "v$(GITCOMMIT)"
+	endif
+	BUILD_TAG := "travis-$(TRAVIS_BUILD_NUMBER)-$(TRAVIS_BRANCH)-$(GITCOMMIT)"
+else
+	LATEST_TAG := "latest"
+	VERSION_TAG := "v$(VERSION)"
+	BUILD_TAG := "local-$(GITCOMMIT)"
+endif
+
 CTIMEVAR=-X $(PKG)/version.GITCOMMIT=$(GITCOMMIT) -X $(PKG)/version.VERSION=$(VERSION)
 GO_LDFLAGS=-ldflags "-w $(CTIMEVAR)"
 GO_LDFLAGS_STATIC=-ldflags "-w $(CTIMEVAR) -extldflags -static"
@@ -26,8 +43,10 @@ GO_LDFLAGS_STATIC=-ldflags "-w $(CTIMEVAR) -extldflags -static"
 # List the GOOS and GOARCH to build
 GOOSARCHES = darwin/amd64 linux/amd64 windows/amd64
 
+.DEFAULT_GOAL := help
+
 .PHONY: all
-all: clean dep build fmt lint test staticcheck vet install ## Runs a clean, build, fmt, lint, test, vet and install
+all: clean dep build verify install docker-build docker-images docker-push ## Runs all the build steps
 
 .PHONY: build
 build: $(NAME) ## Builds a dynamic executable or package
@@ -102,11 +121,43 @@ release: *.go VERSION ## Builds the cross-compiled binaries, naming them in such
 	@echo "+ $@"
 	$(foreach GOOSARCH,$(GOOSARCHES), $(call buildrelease,$(subst /,,$(dir $(GOOSARCH))),$(notdir $(GOOSARCH))))
 
+.PHONY: docker-build
+docker-build: ## Build the container
+	@echo "+ $@"
+	@docker build -t $(REPO):$(GITCOMMIT) .
+	@docker tag $(REPO):$(GITCOMMIT) $(DOCKER_REGISTRY)/$(REPO):$(LATEST_TAG)
+	@docker tag $(REPO):$(GITCOMMIT) $(DOCKER_REGISTRY)/$(REPO):$(VERSION_TAG)
+	@docker tag $(REPO):$(GITCOMMIT) $(DOCKER_REGISTRY)/$(REPO):$(BUILD_TAG)
+
+.PHONY: docker-login
+docker-login: ## Log in into the repository
+	@echo "+ $@"
+ifndef DOCKER_USER
+	$(error DOCKER_USER is undefined)
+endif
+ifndef DOCKER_PASS
+	$(error DOCKER_PASS is undefined)
+endif
+	@docker login -u="${DOCKER_USER}" -p="${DOCKER_PASS}" $(DOCKER_REGISTRY)
+
+.PHONY: docker-images
+docker-images: ## List all local containers
+	@echo "+ $@"
+	@docker images
+
+.PHONY: docker-push
+docker-push: docker-login ## Push the container
+	@echo "+ $@"
+	@docker push $(DOCKER_REGISTRY)/$(REPO):$(LATEST_TAG)
+	@docker push $(DOCKER_REGISTRY)/$(REPO):$(VERSION_TAG)
+	@docker push $(DOCKER_REGISTRY)/$(REPO):$(BUILD_TAG)
+
 .PHONY: bump-version
 BUMP := patch
 bump-version: ## Bump the version in the version file. Set BUMP to [ patch | major | minor ]
 	@go get -u github.com/jessfraz/junk/sembump # update sembump tool
-	$(eval NEW_VERSION = $(shell sembump --kind $(BUMP) $(VERSION)))
+	$(shell command -v sembump)
+	$(eval NEW_VERSION=$(shell sembump --kind $(BUMP) $(VERSION)))
 	@echo "Bumping VERSION from $(VERSION) to $(NEW_VERSION)"
 	echo $(NEW_VERSION) > VERSION
 	@echo "Updating links to download binaries in README.md"
@@ -129,7 +180,7 @@ clean: ## Cleanup any build binaries or packages
 
 .PHONY: help
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -Eh '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: init
 init: ## Initializes this Makefile dependencies: dep, golint, staticcheck, checkmake
